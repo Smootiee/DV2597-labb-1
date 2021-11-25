@@ -20,7 +20,7 @@ int *v;
 unsigned int numWorkers = 0;
 
 struct workerArgs {
-    unsigned int worker_count;    
+    unsigned int worker_count;
     int *arr;
     unsigned int low;
     unsigned int high;
@@ -103,7 +103,7 @@ void * quick_sort(void * orgArgs)
     args_two.worker_count = args->worker_count + 2;
 
     if (args->worker_count < numWorkers){
-        if (args->low < pivot_index){   
+        if (args->low < pivot_index){
             pthread_create(&(worker_one), NULL, quick_sort, &args_one);
         }
         if (pivot_index < args->high){
@@ -111,7 +111,7 @@ void * quick_sort(void * orgArgs)
         }
         pthread_join(worker_one, NULL);
         pthread_join(worker_two, NULL);
-        
+
     }
     else{
 
@@ -128,7 +128,7 @@ void * quick_sort(void * orgArgs)
 char* validate_sorted(){
     for(int i = 0; i < MAX_ITEMS - 1; i++){
         if(v[i] > v[i+1]){
-            return "False"; 
+            return "False";
 
         }
     }

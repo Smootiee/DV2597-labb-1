@@ -84,10 +84,7 @@ void work_seq(){
 
 
         y[k] = b[k] / A[k][k];
-        
-        // for (int j = N - 1; j >= k; --j) {
-        //     A[k][j] = A[k][j] / A[k][k]; /* Division step */
-        // }
+
 
         A[k][k] = 1.0;
         for (i = k+1; i < N; ++i) {
@@ -183,18 +180,16 @@ void *division_step(struct thread_args2 *args){
 void *elimination_step(struct thread_args2 *args){
     int i, j;
     int k = args->k;
-    //int id = args->thread_id;
-    //printf("This is threadID: %d\n", args->thread_id);
+
     for (i = k+1+args->thread_id; i < N; i+=nr_of_threads) {
-        //pthread_barrier_wait(&sync_barrier);
+
         for (j = k+1; j < N; ++j) {
             A[i][j] = A[i][j] - A[i][k]*A[k][j]; /* Elimination step */
         }
         b[i] = b[i] - A[i][k]*y[k];
-        //printf("thread id: %d\n", args->thread_id);
-        //printf("A[%d][%d] = %d -> ", i, k, A[i][k]);
+
         A[i][k] = 0.0;
-        //printf("A[%d][%d] = %d\n", i, k, A[i][k]);
+
     }
     pthread_barrier_wait(&main_thread_sync_barrier);
 
@@ -208,15 +203,10 @@ void work_par2(){
     pthread_barrier_init(&sync_barrier, NULL, nr_of_threads);
     pthread_barrier_init(&main_thread_sync_barrier, NULL, nr_of_threads + 1);
 
-    //args->thread_id = 0;
+
 
     for (k = 0; k < N; ++k){
-        
-        // for (i = 0; i < nr_of_threads; ++i){
-        //     args[i].k = k;
-        //     args[i].thread_id = i;
-        //     pthread_create(&threads[i], NULL, (void *)division_step, &(args[i]));
-        // }
+
 
 
         for (j = k+1; j < N; ++j) {
@@ -224,25 +214,18 @@ void work_par2(){
         }
 
         y[k] = b[k] / A[k][k];
-        // pthread_barrier_wait(&main_thread_sync_barrier);
+
         A[k][k] = 1.0;
 
         for (i = 0; i < nr_of_threads; ++i){
-            //printf("This is should not be 289: %d\n", i);
+
             args[i].k = k;
             args[i].thread_id = i;
             pthread_create(&threads[i], NULL, (void *)elimination_step, &(args[i]));
         }
 
         pthread_barrier_wait(&main_thread_sync_barrier);
-        //Print_Matrix();
-        // for (i = k+1; i < N; ++i) {
-        //     for (j = k+1; j < N; ++j) {
-        //         A[i][j] = A[i][j] - A[i][k]*A[k][j]; /* Elimination step */
-        //     }
-        //     b[i] = b[i] - A[i][k]*y[k];
-        //     A[i][k] = 0.0;
-        // }
+
     }
 
     free(args);
