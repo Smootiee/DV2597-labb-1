@@ -8,7 +8,7 @@ gaus: gaussian.c
 all: qsort gaus
 
 
-clean: 
+clean:
 	rm -rf *.out
 run: qsort gaus
 	./qsort.out
