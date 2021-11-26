@@ -5,8 +5,6 @@
  ***************************************************************************/
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <pthread.h>
 
 #define MAX_SIZE 4096
@@ -26,19 +24,8 @@ int v;
 pthread_barrier_t sync_barrier, main_thread_sync_barrier;
 pthread_mutex_t lock;
 
-struct struct_args {
-    int k;
-    int j;
-    int thread_id;
-};
 
 struct thread_args {
-    int k;
-    int j;
-    int thread_id;
-};
-
-struct thread_args2 {
     int k;
     int thread_id;
 };
@@ -64,9 +51,6 @@ main(int argc, char **argv)
     if (v == 1) {
         work_seq();
     }
-    else if (v == 2) {
-        work_par();
-    }
     else if (v == 3) {
         work_par2();
     }
@@ -84,8 +68,6 @@ void work_seq(){
 
 
         y[k] = b[k] / A[k][k];
-
-
         A[k][k] = 1.0;
         for (i = k+1; i < N; ++i) {
             for (j = k+1; j < N; ++j)
@@ -96,78 +78,7 @@ void work_seq(){
     }
 }
 
-void *division_and_elimination_step(int *thread_id){
-    int k, j, i;
-    for (k = 0; k < N; ++k){
-        for (j = k+1 + *thread_id; j < N; j+=nr_of_threads) {
-            A[k][j] = A[k][j] / A[k][k]; /* Division step */
-            for (i = k+1; i < N; ++i)
-                A[i][j] = A[i][j] - A[i][k]*A[k][j]; /* Elimination step */
-        }
-        pthread_barrier_wait(&sync_barrier);
-    }
-    pthread_barrier_wait(&main_thread_sync_barrier);
-}
-
-void *last_part(struct thread_args *args){
-    int k = args->k;
-    int id = args->j;
-    int i;
-    for (i = k+1+id; i < N; i+=nr_of_threads) {
-        b[i] = b[i] - A[i][k]*y[k];
-        A[i][k] = 0.0;
-    }
-
-    pthread_barrier_wait(&main_thread_sync_barrier);
-}
-
-void work_par(){
-    int i, j, k;
-    pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*nr_of_threads);
-    struct thread_args *args = (struct thread_args*)malloc(sizeof(struct thread_args)*nr_of_threads);
-
-
-    /*
-        Initilizing our two barriers with two different conditions.
-        Reasoning:
-            sync_barrier is used to sync all the threads, therefore the number of calls
-            to `pthread_barrier_wait` needs to be the same amount as threads. This
-            also avoids getting a dead lock. Which can happen if for example the
-            number of threads is not a multiple of the barrier condition.
-
-            main_thread_sync_barrier is used to make the main thread wait until all
-            spawned threads has completed their work. Therefore we need to set the
-            condition value as `nr_of_threads` + 1 (because of the main thread).
-
-    */
-    pthread_barrier_init(&sync_barrier, NULL, nr_of_threads);
-    pthread_barrier_init(&main_thread_sync_barrier, NULL, nr_of_threads + 1);
-
-    for (i = 0; i < nr_of_threads; ++i){
-        args[i].k = i;
-        pthread_create(&threads[i], NULL, (void *)division_and_elimination_step, &(args[i].k));
-    }
-
-    pthread_barrier_wait(&main_thread_sync_barrier);
-
-    /*
-        Parallelizing this segment is useless, actually yields reduced performance.
-    */
-
-    for (k = 0; k < N; ++k){
-        y[k] = b[k] / A[k][k];
-        A[k][k] = 1.0;
-        for (i = k+1; i < N; ++i) {
-            b[i] = b[i] - A[i][k]*y[k];
-            A[i][k] = 0.0;
-        }
-    }
-
-    free(threads);
-    free(args);
-}
-
-void *division_step(struct thread_args2 *args){
+void *division_step(struct thread_args *args){
     int j, k = args->k;
 
     for (j = k+1+args->thread_id; j < N; j+=nr_of_threads) {
@@ -177,19 +88,21 @@ void *division_step(struct thread_args2 *args){
     pthread_barrier_wait(&main_thread_sync_barrier);
 }
 
-void *elimination_step(struct thread_args2 *args){
+void *elimination_step(struct thread_args *args){
     int i, j;
     int k = args->k;
 
+    /*
+        The entire elimination step in the parallelized function where the work load is divided in a round-robin principle.
+        The thread_id is the shift for the start point and each iteration for i needs to jump `nr_of_threads` steps.
+    */
     for (i = k+1+args->thread_id; i < N; i+=nr_of_threads) {
-
         for (j = k+1; j < N; ++j) {
-            A[i][j] = A[i][j] - A[i][k]*A[k][j]; /* Elimination step */
+            A[i][j] = A[i][j] - A[i][k]*A[k][j];  /* Elimination step */
         }
         b[i] = b[i] - A[i][k]*y[k];
-
         A[i][k] = 0.0;
-
+        
     }
     pthread_barrier_wait(&main_thread_sync_barrier);
 
@@ -198,36 +111,41 @@ void *elimination_step(struct thread_args2 *args){
 void work_par2(){
     int i, j, k;
     pthread_t *threads = (pthread_t *)malloc(sizeof(pthread_t)*nr_of_threads);
-    struct thread_args2 *args = (struct thread_args2*)malloc(sizeof(struct thread_args2)*nr_of_threads);
-    int thread_to_be_syncd = N/nr_of_threads;
-    pthread_barrier_init(&sync_barrier, NULL, nr_of_threads);
+    struct thread_args *args = (struct thread_args*)malloc(sizeof(struct thread_args)*nr_of_threads);
+
+    /* 
+        Initializing barrier `main_thread_sync_barrier` such that it will need to be called by nr_of_threads + 1
+        threads. This is in effect a way to stop the main thread from going further or exiting.
+    */
     pthread_barrier_init(&main_thread_sync_barrier, NULL, nr_of_threads + 1);
 
-
-
     for (k = 0; k < N; ++k){
-
-
-
-        for (j = k+1; j < N; ++j) {
+        /*
+            This is a change which does not matter. Moved the calculation of y_k to the beginning of the for-loop
+            so that the for-loop can do the division step on all elements in the row vector A_k.
+        */
+        y[k] = b[k] / A[k][k];
+        for (j = N - 1; j >= k; --j) {
             A[k][j] = A[k][j] / A[k][k]; /* Division step */
         }
 
-        y[k] = b[k] / A[k][k];
 
-        A[k][k] = 1.0;
-
+        /*
+            Spawning nr_of_threads amount of threads and passes the k-value and the thread_id-value to
+            give each thread work based on the round-robin principle.
+        */
         for (i = 0; i < nr_of_threads; ++i){
-
             args[i].k = k;
             args[i].thread_id = i;
             pthread_create(&threads[i], NULL, (void *)elimination_step, &(args[i]));
         }
 
+        // Main thread waiting for all the child threads to complete their work.
+        // This is needed cause we have certain dependencies through the calculations.
         pthread_barrier_wait(&main_thread_sync_barrier);
-
     }
 
+    // Free what was allocated, avoiding memory leaks.
     free(args);
     free(threads);
 }
@@ -236,10 +154,12 @@ void
 Init_Matrix()
 {
     int i, j;
+    printf("1");
     printf("\nsize      = %dx%d ", N, N);
     printf("\nmaxnum    = %d \n", maxnum);
     printf("Init	  = %s \n", Init);
     printf("Initializing matrix...");
+    printf("2");
     if (strcmp(Init,"rand") == 0) {
         for (i = 0; i < N; i++){
             for (j = 0; j < N; j++) {
@@ -301,7 +221,7 @@ Init_Default()
     Init = "rand";
     maxnum = 15.0;
     PRINT = 0;
-    nr_of_threads = -1;
+    nr_of_threads = 0;
     v = 1;
 }
 
@@ -338,7 +258,8 @@ Read_Options(int argc, char **argv)
                     printf("\n          Init      = rand" );
                     printf("\n          maxnum    = 5 ");
                     printf("\n          P         = 0 ");
-                    printf("\n          nr_of_threads = -1\n\n");
+                    printf("\n          nr_of_threads = 0");
+                    printf("\n          v         = 1\n\n");
                     exit(0);
                     break;
                 case 'I':
